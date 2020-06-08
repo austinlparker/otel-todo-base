@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-client
+  labels:
+    app.kubernetes.io/name: todo-client
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+    app.kubernetes.io/managed-by: "{{ .Release.Service  }}"
+    app.kubernetes.io/instance: "{{ .Release.Name }}"   
+spec:
+  type: {{ .Values.client.serviceType }}
+  selector:
+    app: todo-client
+  ports:
+  - name: http
+    port: 80
+    {{ if eq .Values.client.serviceType "LoadBalancer" }}
+    targetPort: {{ .Values.client.targetPort }}
+    {{ else }}
+    nodePort: {{ .Values.client.targetPort }}
+    {{ end }}
+  {{ if eq .Values.client.serviceType "LoadBalancer" }}
+  loadBalancerIP: {{ .Values.client.ip }}
+  {{ end }}

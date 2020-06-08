@@ -1,0 +1,64 @@
+version: '1.0'
+stages:
+  - prepare   
+  - build
+  - deploy
+steps:
+  main_clone:
+    title: Cloning main repository...
+    stage: prepare
+    type: git-clone
+    repo: # Add your repository here
+    revision: master
+    git: github    
+  build_server_image:
+    title: Building Server Docker Image
+    stage: build
+    type: build
+    image_name: # The name for your docker image
+    working_directory: ./server
+    tag: ${{CF_SHORT_REVISION}}
+    dockerfile: Dockerfile  
+    on_success:
+      metadata:
+        set:
+          - '${{build_server_image.imageId}}':
+            - CF_QUALITY: true
+            - Performance: true
+            - Latency: ".89" 
+            - Test_Coverage: "83%"
+            - JIRA: "https://codefresh-io.atlassian.net/browse/MKTG-12"
+  build_client_image:
+    title: Building Client Docker Image
+    stage: build
+    type: build
+    image_name: # The name for your docker image
+    working_directory: ./client
+    tag: ${{CF_SHORT_REVISION}}
+    dockerfile: Dockerfile  
+    on_success:
+      metadata:
+        set:
+          - '${{build_client_image.imageId}}':
+            - CF_QUALITY: true
+            - Performance: true
+            - Latency: ".89" 
+            - Test_Coverage: "83%"
+            - JIRA: "https://codefresh-io.atlassian.net/browse/MKTG-12"
+  deploy_chart:
+    image: 'codefresh/cfstep-helm:3.1.1'
+    title: Deploying Helm chart
+    stage: deploy
+    when:
+      branch:
+        only:
+          - master
+    environment:
+      - CHART_REF=helm
+      - RELEASE_NAME=otel-todo-prod
+      - KUBE_CONTEXT=${{KUBE_CONTEXT}}
+      - VALUE_image_pullPolicy=Always
+      - VALUE_image_tag=${{CF_SHORT_REVISION}}
+      - VALUE_buildID='${{CF_BUILD_ID}}'
+      - VALUE_image_pullSecret=codefresh-generated-docker.io-dockerhub-default
+      - VALUE_lightstepKey=${{LS_KEY}}

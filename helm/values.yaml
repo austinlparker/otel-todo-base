@@ -1,0 +1,19 @@
+image:
+  repository: # prefix for your docker images
+  tag: latest
+  pullPolicy: IfNotPresent
+client:
+  name: todo-client
+  serviceType: # NodePort or LoadBalancer
+  targetPort: # If LoadBalancer, 80. If NodePort, a sufficiently high port (30002+)
+  ip: # If LoadBalancer selected, add a static IP here
+server:
+  name: todo-server
+  serviceType: # NodePort or LoadBalancer
+  targetPort: # If LoadBalancer, 9000. If NodePort, a sufficiently high port (30002+)
+  ip: # If LoadBalancer selected, add a static IP here
+mysql-server:
+  mysqlUser: todouser
+  mysqlPassword: todopw
+  mysqlDatabase: todos
+lightstepKey: # if running locally, set this value here or on the helm command line

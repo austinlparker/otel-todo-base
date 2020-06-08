@@ -1,0 +1,13 @@
+apiVersion: v2
+description: A Helm Chart for Spring Todo
+name: todo
+version: v0.0.1
+dependencies:
+  - name: mysql
+    version: v1.6.4
+    repository: https://kubernetes-charts.storage.googleapis.com/
+    alias: mysql-server
+  - name: prometheus
+    version: v11.4.0
+    repository: https://kubernetes-charts.storage.googleapis.com/
+    alias: prometheus-server

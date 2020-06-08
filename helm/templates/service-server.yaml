@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-server
+  labels:
+    app.kubernetes.io/name: todo-server
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+    app.kubernetes.io/managed-by: "{{ .Release.Service  }}"
+    app.kubernetes.io/instance: "{{ .Release.Name }}"   
+spec:
+  type: {{ .Values.server.serviceType }}
+  selector:
+    app: todo-server
+  ports:
+  - name: todo-server
+    port: 9000
+    {{ if eq .Values.server.serviceType "LoadBalancer" }}
+    targetPort: {{ .Values.server.targetPort }}
+    {{ else }}
+    nodePort: {{ .Values.server.targetPort }}
+    {{ end }}
+  {{ if eq .Values.server.serviceType "LoadBalancer" }}
+  loadBalancerIP: {{ .Values.server.ip }}
+  {{ end }}
+

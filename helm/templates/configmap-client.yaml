@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.client.name }}
+  labels:
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+data:
+  {{ if eq .Values.client.serviceType "LoadBalancer" }}
+  config.js: |
+    var config = (() => {
+      return {
+        "VUE_APP_ENV_Server": "http://{{ .Values.server.ip }}:{{ .Values.server.targetPort }}/",
+      };
+    })();
+  {{ else }}
+  config.js: |
+    var config = (() => {
+      return {
+        "VUE_APP_ENV_Server": "http://localhost:{{ .Values.server.targetPort }}",
+      };
+    })();
+  {{ end }}

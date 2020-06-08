@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.client.name }}
+  labels:
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.client.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.client.name }}
+    spec:
+      volumes:
+        - name: {{ .Values.client.name }}-config
+          configMap:
+            name: {{ .Values.client.name }}
+      containers:
+        - name: {{ .Values.client.name }}
+          image: "{{ .Values.image.repository }}/{{ .Values.client.name }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+          - name: REDEPLOYED_AT
+            value: "{{now}}"
+          ports:
+          - containerPort: 8080
+          volumeMounts:
+            - name: {{ .Values.client.name }}-config
+              mountPath: /usr/share/nginx/html/config.js
+              subPath: config.js
+          resources:
+            requests:
+              cpu: 200m
+              memory: 180Mi
+            limits:
+              cpu: 300m
+              memory: 300Mi
+
+

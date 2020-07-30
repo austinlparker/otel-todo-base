@@ -20,17 +20,15 @@ Add the auto-instrumentation jar to the Docker container and the OTLP exporter b
 ```shell
 ...
 
-ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v0.3.0/opentelemetry-auto-0.3.0.jar /app/otel.jar
-ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v0.3.0/opentelemetry-auto-exporters-otlp-0.3.0.jar /app/otel-otlp.jar
+ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v0.6.0/opentelemetry-javaagent-all.jar /app/otel.jar
 ENV OTEL_RESOURCE_ATTRIBUTES service.name=todo-server
+ENV OTEL_OTLP_ENDPOINT otel-collector:55680
 
 ...
 
 ENTRYPOINT ["java",\
            "-XX:+UnlockExperimentalVMOptions",\
            "-javaagent:/app/otel.jar",\
-           "-Dota.exporter.jar=/app/otel-otlp.jar",\
-           "-Dota.exporter.otlp.endpoint=otel-collector:55680",\
             "-Djava.security.egd=file:/dev/./urandom",\
             "-jar","/app/spring-boot-application.jar"]
 ```
@@ -50,13 +48,13 @@ First, add the necessary dependencies to your `package.json` -
 
 ```json
 "dependencies": {
-    "@opentelemetry/context-zone": "^0.8.3",
-    "@opentelemetry/exporter-collector": "^0.8.3",
+    "@opentelemetry/context-zone": "^0.10.0",
+    "@opentelemetry/exporter-collector": "^0.10.0",
     "@opentelemetry/plugin-document-load": "^0.8.0",
     "@opentelemetry/plugin-user-interaction": "^0.8.0",
-    "@opentelemetry/plugin-xml-http-request": "^0.8.3",
-    "@opentelemetry/tracing": "^0.8.3",
-    "@opentelemetry/web": "^0.8.3",
+    "@opentelemetry/plugin-xml-http-request": "^0.10.0",
+    "@opentelemetry/tracing": "^0.10.0",
+    "@opentelemetry/web": "^0.10.0",
     ...
   },
 ```
@@ -70,8 +68,7 @@ import { XMLHttpRequestPlugin } from '@opentelemetry/plugin-xml-http-request';
 import { UserInteractionPlugin } from '@opentelemetry/plugin-user-interaction';
 import { DocumentLoad } from '@opentelemetry/plugin-document-load';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
-import { CollectorExporter } from '@opentelemetry/exporter-collector';
-import { HttpTraceContext  } from '@opentelemetry/core';
+import { CollectorTraceExporter } from '@opentelemetry/exporter-collector';
 
 /* eslint-disable no-undef */
 const collectorUrl = config.VUE_APP_ENV_Collector || 'http://localhost:30011/v1/trace'
@@ -79,10 +76,10 @@ const serverBaseUrl = config.VUE_APP_ENV_ServerBase || 'localhost:30005'
 const baseLocation = window.location.hostname || 'localhost'
 /* eslint-enable no-undef */
 
-const exporter = new CollectorExporter({
+const exporterOptions = {
   serviceName: 'todo-client',
   url: collectorUrl,
-});
+};
 
 const providerWithZone = new WebTracerProvider({
   plugins: [
@@ -90,19 +87,16 @@ const providerWithZone = new WebTracerProvider({
     new UserInteractionPlugin(),
     new XMLHttpRequestPlugin({
       ignoreUrls: [new RegExp(`/${baseLocation}:8090/sockjs-node/`)],
-      propagateTraceHeaderCorsUrls: [
-        new RegExp(`/${serverBaseUrl}/`),
-      ],
+      propagateTraceHeaderCorsUrls: new RegExp(`/${serverBaseUrl}/`),
     }),
   ],
 });
 
 providerWithZone.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
-providerWithZone.addSpanProcessor(new SimpleSpanProcessor(new CollectorExporter(exporter)));
+providerWithZone.addSpanProcessor(new SimpleSpanProcessor(new CollectorTraceExporter(exporterOptions)));
 
 providerWithZone.register({
-  contextManager: new ZoneContextManager(),
-  propagator: new HttpTraceContext(),
+  contextManager: new ZoneContextManager()
 });
 ```
 
@@ -131,7 +125,11 @@ data:
   otel-collector-config: |
     receivers:
       otlp:
-        endpoint: "0.0.0.0:55680"
+        protocols:
+          grpc:
+            endpoint: "0.0.0.0:55680"
+          http:
+            endpoint: "0.0.0.0:55681"
     processors:
       batch:
       queued_retry:
@@ -144,15 +142,18 @@ data:
         endpoint: "0.0.0.0:8889"
         namespace: "collector"
       logging:
-      lightstep:
-        access_token: {{ .Values.lightstepKey }}
+      otlp:
+        endpoint: "ingest.lightstep.com:443"
+        compression: gzip
+        headers:
+          "lightstep-access-token": "{{ .Values.lightstepKey }}"
     service:
       extensions: [health_check, zpages]
       pipelines:
         traces:
           receivers: [otlp]
           processors: [batch, queued_retry]
-          exporters: [logging, lightstep]
+          exporters: [logging, otlp]
         metrics:
           receivers: [otlp]
           exporters: [logging, prometheus]
@@ -176,8 +177,16 @@ spec:
   ports:
   - name: otlp # Default endpoint for OpenTelemetry receiver.
     port: 55680
-    protocol: TCP
-    targetPort: 55680
+    {{ if eq .Values.collector.serviceType "LoadBalancer" }}
+    targetPort: {{ .Values.collector.grpcPort }}
+    {{ end }}
+  - name: otlp-http
+    port: 55681
+    {{ if eq .Values.collector.serviceType "LoadBalancer" }}
+    targetPort: {{ .Values.collector.httpPort }}
+    {{ else }}
+    nodePort: {{ .Values.collector.httpPort }}
+    {{ end }}
   - name: metrics # Default endpoint for querying metrics.
     port: 8889
   - name: healthz
@@ -208,11 +217,11 @@ spec:
     spec:
       containers:
       - command:
-          - "/otelcontribcol"
+          - "/otelcol"
           - "--config=/conf/otel-collector-config.yaml"
 #           Memory Ballast size should be max 1/3 to 1/2 of memory.
           - "--mem-ballast-size-mib=683"
-        image: otel/opentelemetry-collector-contrib-dev:latest
+        image: otel/opentelemetry-collector:0.6.1
         name: otel-collector
         env:
           - name: REDEPLOYED_AT
@@ -228,11 +237,10 @@ spec:
         - containerPort: 55679 # Default endpoint for ZPages.
         - containerPort: 55680 # Default endpoint for OpenTelemetry receiver.
         - containerPort: 8889  # Default endpoint for querying metrics.
+        - containerPort: 55681 # HTTP OTLP Endpoint
         volumeMounts:
         - name: otel-collector-config-vol
           mountPath: /conf
-#        - name: otel-collector-secrets
-#          mountPath: /secrets
         livenessProbe:
           httpGet:
             path: /
